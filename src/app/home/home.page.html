@@ -1,0 +1,150 @@
+<ion-content>
+  <div class="header-bar">
+    <div class="header-top">
+      <div>
+        <h2 style="margin: 0; font-size: 18px;">🎫 Conductor Ticketing & GPS Terminal</h2>
+        <small>Bongabon Primemovers Transport Service Cooperative</small>
+      </div>
+      @if (conductor) {
+        <button class="pink-btn" (click)="logout()">Log Out</button>
+      }
+    </div>
+
+    <div class="server-bar">
+      <input
+        class="input-box"
+        style="margin: 0; flex: 1;"
+        [(ngModel)]="serverUrl"
+        placeholder="http://192.168.1.8:8000"
+      />
+      <button class="pink-btn" (click)="refreshAll()">Sync</button>
+    </div>
+  </div>
+
+  <div class="page-container">
+    <!-- 1. CONDUCTOR / DRIVER AUTHENTICATION CARD -->
+    @if (!conductor) {
+      <div class="theme-card">
+      <h3 class="card-title">Conductor / Driver Log-In & Sign-Up</h3>
+
+      <input class="input-box" [(ngModel)]="username" placeholder="Employee Username" />
+      <input class="input-box" type="password" [(ngModel)]="password" placeholder="Password" />
+
+      <label class="field-label" for="selected-bus">Assign Active Mini-Bus Unit:</label>
+      <select id="selected-bus" class="input-box" [(ngModel)]="selectedBusId">
+        @for (b of availableBuses; track b.bus_id) {
+          <option [value]="b.bus_id">
+            {{ b.bus_id }} — Plate: {{ b.plate_number }} ({{ b.driver_name }} / {{ b.conductor_name }})
+          </option>
+        }
+      </select>
+
+      <input class="input-box" [(ngModel)]="fullName" placeholder="Full Name (For Sign-Up)" />
+
+      <div style="display: flex; gap: 10px; margin-top: 8px;">
+        <button type="button" class="mauve-btn" style="flex: 1;" (click)="login()">Lock Session & Log In</button>
+        <button type="button" class="pink-btn" style="flex: 1;" (click)="signup()">Sign Up Conductor</button>
+      </div>
+
+      @if (authError) {
+        <p class="error-text">{{ authError }}</p>
+      }
+      </div>
+    }
+
+    <!-- 2. ACTIVE TICKETING, GPS TELEMETRY & SMART ALIGHTING -->
+    @if (conductor) {
+      <!-- Live GPS Telemetry & Remittance Banner -->
+      <div class="theme-card telemetry-card">
+        <div class="header-top">
+          <b>🚌 Active Unit: {{ selectedBusId }} ({{ activeBus?.status || 'Available Seats' }})</b>
+          <span style="font-size: 12px; font-weight: 700; color: #2e7d32;">📡 {{ gpsStatus }}</span>
+        </div>
+
+        <p style="margin: 6px 0; font-size: 13px;">
+          Onboard: <b>{{ activeBus?.current_passengers || 0 }}</b> |
+          Available Seats: <b>{{ activeBus?.available_seats || 0 }}</b> |
+          Standing: <b>{{ activeBus?.standing_count || 0 }}</b>
+        </p>
+
+        <div style="border-top: 1px solid #B47792; padding-top: 6px; font-size: 13px;">
+          💰 <b>Daily Remittance:</b> {{ remittance.total_tickets }} Tickets |
+          {{ remittance.total_passengers_carried }} Passengers |
+          <b>₱{{ formatMoney(remittance.total_fare_collected) }} Collected</b>
+        </div>
+      </div>
+
+      <!-- Origin-to-Destination ("From-To") Ticket Issuance -->
+      <div class="theme-card">
+        <h3 class="card-title">Issue Passenger Ticket (Auto-Boards Bus)</h3>
+
+        <label class="field-label" for="origin-stop">From (Origin Boarding Stop):</label>
+        <select id="origin-stop" class="input-box" [(ngModel)]="originStopId">
+          @for (s of stops; track s.stop_id) {
+            <option [ngValue]="s.stop_id">{{ s.stop_name }}</option>
+          }
+        </select>
+
+        <label class="field-label" for="destination-stop">To (Destination Drop-Off Stop):</label>
+        <select id="destination-stop" class="input-box" [(ngModel)]="destStopId">
+          @for (s of stops; track s.stop_id) {
+            <option [ngValue]="s.stop_id">{{ s.stop_name }}</option>
+          }
+        </select>
+
+        <div style="display: flex; gap: 10px;">
+          <div style="flex: 1;">
+            <label class="field-label" for="fare-tier">Fare Tier:</label>
+            <select id="fare-tier" class="input-box" [(ngModel)]="passengerType">
+              <option value="Regular">Regular Fare</option>
+              <option value="Discounted">20% Discount (Student/Senior/PWD)</option>
+            </select>
+          </div>
+
+          <div style="width: 115px;">
+            <label class="field-label" for="passenger-count">Passengers:</label>
+            <input id="passenger-count" class="input-box" type="number" min="1" [(ngModel)]="passengerCount" />
+          </div>
+        </div>
+
+        <!-- Live Distance & Fare Matrix Preview -->
+        <div class="peach-box">
+          <div>📏 Computed Distance: <b>{{ formatMoney(previewDistanceKm()) }} km</b></div>
+          <div>
+            💵 Total Fare:
+            <b style="font-size: 18px; color: #B47792;">₱{{ formatMoney(previewTotalFare()) }}</b>
+            <small>
+              ({{ passengerType === 'Discounted' ? '20% Discount Applied' : '₱15 first 4km + ₱2.20/km' }})
+            </small>
+          </div>
+        </div>
+
+        <button class="mauve-btn" style="width: 100%;" (click)="issueTicket()">
+          🎫 Issue Ticket & Auto-Board (+{{ passengerCount }})
+        </button>
+      </div>
+
+      <!-- Smart Alighting (Drop-Off Alert Panel) -->
+      <div class="theme-card">
+        <h3 class="card-title">🔔 Smart Alighting (Active Drop-Off Alerts)</h3>
+        @if (dropoffs.length === 0) {
+          <p style="font-size: 13px; color: #757575;">
+            No active onboard tickets waiting to alight.
+          </p>
+        }
+
+        @for (d of dropoffs; track d.destination_stop_id) {
+          <div class="peach-box dropoff-row">
+            <div>
+              <b>{{ d.passengers_dropping_off }} passenger(s) dropping off</b><br />
+              <small>📍 {{ d.stop_name }}</small>
+            </div>
+            <button class="pink-btn" (click)="clearDropoff(d.destination_stop_id)">
+              Drop Off (-{{ d.passengers_dropping_off }})
+            </button>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</ion-content>
